@@ -66,6 +66,49 @@ app.post('/api/register', async (req, res) => {
         res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
+// ===== ACTUALIZAR BALANCE =====
+app.get('/api/update-balance/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        const { Pool } = require('pg');
+        const pool = new Pool({
+            connectionString: process.env.DATABASE_URL,
+            ssl: { rejectUnauthorized: false }
+        });
+
+        const result = await pool.query(
+            'SELECT polygon_address FROM usuarios WHERE id = $1',
+            [userId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Usuario no encontrado' });
+        }
+
+        const address = result.rows[0].polygon_address;
+
+        const Web3 = require('web3');
+        const web3 = new Web3(process.env.POLYGON_RPC_URL);
+        const balanceWei = await web3.eth.getBalance(address);
+        const balanceEth = web3.utils.fromWei(balanceWei, 'ether');
+
+        await pool.query(
+            'UPDATE usuarios SET balance = $1 WHERE id = $2',
+            [balanceEth, userId]
+        );
+
+        res.json({
+            success: true,
+            address: address,
+            balance: balanceEth + ' MATIC'
+        });
+
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al actualizar balance' });
+    }
+});
 app.listen(PORT, () => {
   console.log(`✅ Servidor corriendo en puerto ${PORT}`);
 });
