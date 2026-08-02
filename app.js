@@ -89,7 +89,7 @@ app.get('/api/update-balance/:userId', async (req, res) => {
         const address = result.rows[0].polygon_address;
 
         const Web3 = require('web3');
-        const web3 = new Web3(process.env.POLYGON_RPC_URL);
+        const web3 = new Web3('https://polygon-rpc.com');
 
         // 1. BALANCE DE MATIC
         const balanceWei = await web3.eth.getBalance(address);
