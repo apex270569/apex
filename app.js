@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
+const { ethers } = require('ethers');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -31,7 +32,6 @@ app.post('/api/register', async (req, res) => {
             return res.status(400).json({ error: 'Usuario ya existe' });
         }
 
-        const { ethers } = require('ethers');
         const wallet = ethers.Wallet.createRandom();
         const polygonAddress = wallet.address;
         const privateKey = wallet.privateKey;
@@ -55,7 +55,7 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// ===== ACTUALIZAR BALANCE USANDO RPC PÚBLICA =====
+// ===== ACTUALIZAR BALANCE =====
 app.get('/api/update-balance/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
@@ -77,13 +77,12 @@ app.get('/api/update-balance/:userId', async (req, res) => {
 
         const address = result.rows[0].polygon_address;
 
-        // Usar RPC pública de Polygon (SIN API KEY)
-        const { ethers } = require('ethers');
-        const provider = new ethers.JsonRpcProvider('https://polygon-rpc.com');
+        // Conectar a Polygon usando RPC pública
+        const provider = new ethers.providers.JsonRpcProvider('https://polygon-rpc.com');
         
         // 1. BALANCE DE MATIC
         const maticBalanceWei = await provider.getBalance(address);
-        const maticBalance = Number(ethers.formatEther(maticBalanceWei));
+        const maticBalance = parseFloat(ethers.utils.formatEther(maticBalanceWei));
 
         // 2. BALANCE DE USDT
         const USDT_CONTRACT = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F';
@@ -97,7 +96,7 @@ app.get('/api/update-balance/:userId', async (req, res) => {
         try {
             const usdtBalanceWei = await contract.balanceOf(address);
             const decimals = await contract.decimals();
-            usdtBalance = Number(usdtBalanceWei) / Math.pow(10, Number(decimals));
+            usdtBalance = parseFloat(usdtBalanceWei) / Math.pow(10, decimals);
         } catch (error) {
             console.log('⚠️ Error obteniendo USDT:', error.message);
         }
