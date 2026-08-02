@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
-const axios = require('axios');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -13,7 +12,6 @@ app.get('/', (req, res) => {
     res.json({ mensaje: '🚀 Backend funcionando correctamente' });
 });
 
-// ===== REGISTRO =====
 app.post('/api/register', async (req, res) => {
     try {
         const { username, email, password, nombre, apellido } = req.body;
@@ -57,11 +55,10 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// ===== ACTUALIZAR BALANCE (USANDO API DE ETHERSCAN) =====
+// ===== ACTUALIZAR BALANCE USANDO RPC PÚBLICA =====
 app.get('/api/update-balance/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
-        const API_KEY = 'S7MZ5FI2VPQ8KSW7NC7YGM9MB4EJ92JHDA';
         
         const { Pool } = require('pg');
         const pool = new Pool({
@@ -80,28 +77,29 @@ app.get('/api/update-balance/:userId', async (req, res) => {
 
         const address = result.rows[0].polygon_address;
 
-        // 1. MATIC BALANCE (API V1 - funciona para MATIC)
-        const maticUrl = `https://api.polygonscan.com/api?module=account&action=balance&address=${address}&tag=latest&apikey=${API_KEY}`;
-        const maticResponse = await axios.get(maticUrl);
-        let maticBalance = 0;
-        if (maticResponse.data.status === '1') {
-            maticBalance = Number(maticResponse.data.result) / 1e18;
-        }
-
-        // 2. USDT BALANCE (USANDO ETHERSCAN API - FUNCIONA)
-        const USDT_CONTRACT = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F';
-        const usdtUrl = `https://api.polygonscan.com/api?module=account&action=tokenbalance&contractaddress=${USDT_CONTRACT}&address=${address}&tag=latest&apikey=${API_KEY}`;
-        console.log('📡 USDT URL:', usdtUrl);
+        // Usar RPC pública de Polygon (SIN API KEY)
+        const { ethers } = require('ethers');
+        const provider = new ethers.JsonRpcProvider('https://polygon-rpc.com');
         
-        const usdtResponse = await axios.get(usdtUrl);
-        console.log('📊 USDT Response:', JSON.stringify(usdtResponse.data));
+        // 1. BALANCE DE MATIC
+        const maticBalanceWei = await provider.getBalance(address);
+        const maticBalance = Number(ethers.formatEther(maticBalanceWei));
 
+        // 2. BALANCE DE USDT
+        const USDT_CONTRACT = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F';
+        const usdtAbi = [
+            'function balanceOf(address owner) view returns (uint256)',
+            'function decimals() view returns (uint8)'
+        ];
+        const contract = new ethers.Contract(USDT_CONTRACT, usdtAbi, provider);
+        
         let usdtBalance = 0;
-        // Verificar si la respuesta tiene status "1" o si el resultado es un número
-        if (usdtResponse.data.status === '1' && usdtResponse.data.result) {
-            usdtBalance = Number(usdtResponse.data.result) / 1e18;
-        } else if (usdtResponse.data.result && !isNaN(usdtResponse.data.result)) {
-            usdtBalance = Number(usdtResponse.data.result) / 1e18;
+        try {
+            const usdtBalanceWei = await contract.balanceOf(address);
+            const decimals = await contract.decimals();
+            usdtBalance = Number(usdtBalanceWei) / Math.pow(10, Number(decimals));
+        } catch (error) {
+            console.log('⚠️ Error obteniendo USDT:', error.message);
         }
 
         await pool.query(
