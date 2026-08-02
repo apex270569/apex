@@ -95,16 +95,25 @@ app.get('/api/update-balance/:userId', async (req, res) => {
             maticBalance = Number(maticResponse.data.result) / 1e18;
         }
 
-        // 2. BALANCE DE USDT
-        const USDT_CONTRACT = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F';
-        const usdtUrl = `https://api.polygonscan.com/api?module=account&action=tokenbalance&contractaddress=${USDT_CONTRACT}&address=${address}&tag=latest&apikey=S7MZ5FI2VPQ8KSW7NC7YGM9MB4EJ92JHDA`;
-        const usdtResponse = await axios.get(usdtUrl);
-        console.log('📊 USDT Response:', usdtResponse.data);
+        // 2. BALANCE DE USDT (API V2)
+const USDT_CONTRACT = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F';
+const usdtUrl = `https://api.polygonscan.com/api/v2/account/tokenbalance/${address}/${USDT_CONTRACT}`;
+console.log('📡 Consultando USDT V2:', usdtUrl);
 
-        let usdtBalance = 0;
-        if (usdtResponse.data.status === '1') {
-            usdtBalance = Number(usdtResponse.data.result) / 1e18;
-        }
+let usdtBalance = 0;
+try {
+    const usdtResponse = await axios.get(usdtUrl);
+    console.log('📊 USDT Response V2:', usdtResponse.data);
+    
+    // V2 devuelve el balance directamente como número
+    if (usdtResponse.data && typeof usdtResponse.data === 'number') {
+        usdtBalance = usdtResponse.data / 1e18;
+    } else if (usdtResponse.data && usdtResponse.data.balance) {
+        usdtBalance = usdtResponse.data.balance / 1e18;
+    }
+} catch (usdtError) {
+    console.log('⚠️ Error obteniendo USDT:', usdtError.message);
+}
 
         await pool.query(
             'UPDATE usuarios SET balance = $1 WHERE id = $2',
