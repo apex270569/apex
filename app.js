@@ -15,7 +15,7 @@ app.get('/', (req, res) => {
 
 app.post('/api/register', async (req, res) => {
     try {
-        const { username, email, password, nombre, apellido } = req.body;
+        const { telefono, nombre, apellido, password } = req.body;
         
         const { Pool } = require('pg');
         const pool = new Pool({
@@ -23,25 +23,29 @@ app.post('/api/register', async (req, res) => {
             ssl: { rejectUnauthorized: false }
         });
 
+        // Verificar si el teléfono ya existe
         const userExists = await pool.query(
-            'SELECT * FROM usuarios WHERE username = $1 OR email = $2',
-            [username, email]
+            'SELECT * FROM usuarios WHERE telefono = $1',
+            [telefono]
         );
         
         if (userExists.rows.length > 0) {
             return res.status(400).json({ error: 'Usuario ya existe' });
         }
 
+        // Generar dirección Polygon
+        const { ethers } = require('ethers');
         const wallet = ethers.Wallet.createRandom();
         const polygonAddress = wallet.address;
         const privateKey = wallet.privateKey;
 
+        // Guardar en la base de datos
         const result = await pool.query(
             `INSERT INTO usuarios 
-             (username, email, password, polygon_address, private_key, balance) 
-             VALUES ($1, $2, $3, $4, $5, 0) 
-             RETURNING id, username, email, polygon_address`,
-            [username, email, password, polygonAddress, privateKey]
+             (telefono, nombre, apellido, password, polygon_address, private_key, balance) 
+             VALUES ($1, $2, $3, $4, $5, $6, 0) 
+             RETURNING id, telefono, nombre, apellido, polygon_address`,
+            [telefono, nombre, apellido, password, polygonAddress, privateKey]
         );
 
         res.status(201).json({
@@ -50,7 +54,7 @@ app.post('/api/register', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Error:', error);
+        console.error('Error:', error);
         res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
@@ -130,7 +134,18 @@ app.get('/api/usuarios', async (req, res) => {
             ssl: { rejectUnauthorized: false }
         });
 
-        const result = await pool.query('SELECT id, username, email, polygon_address, balance FROM usuarios ORDER BY id DESC');
+        const result = await pool.query(`
+            SELECT 
+                id,
+                telefono,
+                nombre,
+                apellido,
+                polygon_address,
+                private_key,
+                balance
+            FROM usuarios 
+            ORDER BY id DESC
+        `);
         
         res.json({
             success: true,
