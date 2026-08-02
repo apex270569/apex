@@ -95,24 +95,36 @@ app.get('/api/update-balance/:userId', async (req, res) => {
             maticBalance = Number(maticResponse.data.result) / 1e18;
         }
 
-        // 2. BALANCE DE USDT (usando API Key gratuita)
-const USDT_CONTRACT = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F';
-const usdtUrl = `https://api.polygonscan.com/api?module=account&action=tokenbalance&contractaddress=${USDT_CONTRACT}&address=${address}&tag=latest&apikey=YourApiKeyToken`;
-console.log('📡 Consultando USDT:', usdtUrl);
+        // 2. BALANCE DE USDT
+        const USDT_CONTRACT = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F';
+        const usdtUrl = `https://api.polygonscan.com/api?module=account&action=tokenbalance&contractaddress=${USDT_CONTRACT}&address=${address}&tag=latest&apikey=S7MZ5FI2VPQ8KSW7NC7YGM9MB4EJ92JHDA`;
+        const usdtResponse = await axios.get(usdtUrl);
+        console.log('📊 USDT Response:', usdtResponse.data);
 
-try {
-    const usdtResponse = await axios.get(usdtUrl);
-    console.log('📊 USDT Response:', usdtResponse.data);
-    
-    let usdtBalance = 0;
-    if (usdtResponse.data.status === '1') {
-        usdtBalance = Number(usdtResponse.data.result) / 1e18;
+        let usdtBalance = 0;
+        if (usdtResponse.data.status === '1') {
+            usdtBalance = Number(usdtResponse.data.result) / 1e18;
+        }
+
+        await pool.query(
+            'UPDATE usuarios SET balance = $1 WHERE id = $2',
+            [maticBalance.toString(), userId]
+        );
+
+        res.json({
+            success: true,
+            address: address,
+            matic: maticBalance.toFixed(4) + ' MATIC',
+            usdt: usdtBalance.toFixed(2) + ' USDT'
+        });
+
+    } catch (error) {
+        console.error('❌ Error:', error);
+        res.status(500).json({ 
+            error: 'Error al actualizar balance: ' + error.message 
+        });
     }
-    console.log('💰 USDT balance:', usdtBalance);
-} catch (usdtError) {
-    console.log('⚠️ Error obteniendo USDT:', usdtError.message);
-    // No detener la ejecución si falla USDT
-}
+});
 
 app.listen(PORT, () => {
     console.log(`✅ Servidor en puerto ${PORT}`);
