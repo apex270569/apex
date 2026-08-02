@@ -1,24 +1,23 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
+const axios = require('axios');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
 // Ruta de prueba
 app.get('/', (req, res) => {
-  res.json({ mensaje: '🚀 Backend funcionando correctamente' });
+    res.json({ mensaje: '🚀 Backend funcionando correctamente' });
 });
 
-// Iniciar servidor
-// ===== REGISTRO DE USUARIO =====
+// ===== REGISTRO =====
 app.post('/api/register', async (req, res) => {
     try {
-        const { username, email, password, nombre, apellido, codigoInvitacion } = req.body;
+        const { username, email, password, nombre, apellido } = req.body;
         
         const { Pool } = require('pg');
         const pool = new Pool({
@@ -26,7 +25,6 @@ app.post('/api/register', async (req, res) => {
             ssl: { rejectUnauthorized: false }
         });
 
-        // Verificar si el usuario ya existe
         const userExists = await pool.query(
             'SELECT * FROM usuarios WHERE username = $1 OR email = $2',
             [username, email]
@@ -36,24 +34,18 @@ app.post('/api/register', async (req, res) => {
             return res.status(400).json({ error: 'Usuario ya existe' });
         }
 
-        // Generar dirección Polygon
-        const Web3 = require('web3');
-        const HDWalletProvider = require('@truffle/hdwallet-provider');
-        const provider = new HDWalletProvider({
-            mnemonic: process.env.MNEMONIC,
-            providerOrUrl: process.env.POLYGON_RPC_URL
-        });
-        const web3 = new Web3(provider);
-        const account = web3.eth.accounts.create();
-        const polygonAddress = account.address;
+        // Generar dirección Polygon (SIN RPC)
+        const { ethers } = require('ethers');
+        const wallet = ethers.Wallet.createRandom();
+        const polygonAddress = wallet.address;
+        const privateKey = wallet.privateKey;
 
-        // Guardar en la base de datos
         const result = await pool.query(
             `INSERT INTO usuarios 
              (username, email, password, polygon_address, private_key, balance) 
              VALUES ($1, $2, $3, $4, $5, 0) 
              RETURNING id, username, email, polygon_address`,
-            [username, email, password, polygonAddress, account.privateKey]
+            [username, email, password, polygonAddress, privateKey]
         );
 
         res.status(201).json({
@@ -66,10 +58,12 @@ app.post('/api/register', async (req, res) => {
         res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
-// ===== ACTUALIZAR BALANCE CON MATIC Y USDT =====
+
+// ===== ACTUALIZAR BALANCE USANDO POLYGONSCAN API =====
 app.get('/api/update-balance/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
+        const POLYGONSCAN_API_KEY = 'S7MZ5FI2VPQ8KSW7NC7YGM9MB4EJ92JHDA';
         
         const { Pool } = require('pg');
         const pool = new Pool({
@@ -77,6 +71,7 @@ app.get('/api/update-balance/:userId', async (req, res) => {
             ssl: { rejectUnauthorized: false }
         });
 
+        // Obtener dirección del usuario
         const result = await pool.query(
             'SELECT polygon_address FROM usuarios WHERE id = $1',
             [userId]
@@ -88,55 +83,49 @@ app.get('/api/update-balance/:userId', async (req, res) => {
 
         const address = result.rows[0].polygon_address;
 
-        const Web3 = require('web3');
-        const web3 = new Web3('https://rpc-mainnet.maticvigil.com');
+        // 1. OBTENER BALANCE DE MATIC (PolygonScan API)
+        const maticResponse = await axios.get(
+            `https://api.polygonscan.com/api?module=account&action=balance&address=${address}&tag=latest&apikey=${POLYGONSCAN_API_KEY}`
+        );
 
-        // 1. BALANCE DE MATIC
-        const balanceWei = await web3.eth.getBalance(address);
-        const balanceMatic = web3.utils.fromWei(balanceWei, 'ether');
+        if (maticResponse.data.status !== '1') {
+            throw new Error('Error al obtener balance MATIC: ' + maticResponse.data.message);
+        }
 
-        // 2. BALANCE DE USDT
+        const maticBalance = Number(maticResponse.data.result) / 1e18;
+
+        // 2. OBTENER BALANCE DE USDT (PolygonScan API)
         const USDT_CONTRACT = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F';
-        const USDT_ABI = [
-            {
-                "constant": true,
-                "inputs": [{"name": "_owner", "type": "address"}],
-                "name": "balanceOf",
-                "outputs": [{"name": "balance", "type": "uint256"}],
-                "type": "function"
-            },
-            {
-                "constant": true,
-                "inputs": [],
-                "name": "decimals",
-                "outputs": [{"name": "", "type": "uint8"}],
-                "type": "function"
-            }
-        ];
+        const usdtResponse = await axios.get(
+            `https://api.polygonscan.com/api?module=account&action=tokenbalance&contractaddress=${USDT_CONTRACT}&address=${address}&tag=latest&apikey=${POLYGONSCAN_API_KEY}`
+        );
 
-        const contract = new web3.eth.Contract(USDT_ABI, USDT_CONTRACT);
-        const usdtBalanceWei = await contract.methods.balanceOf(address).call();
-        const decimals = await contract.methods.decimals().call();
-        const usdtBalance = Number(usdtBalanceWei) / (10 ** Number(decimals));
+        let usdtBalance = 0;
+        if (usdtResponse.data.status === '1') {
+            usdtBalance = Number(usdtResponse.data.result) / 1e18;
+        }
 
-        // 3. ACTUALIZAR EN BD
+        // Actualizar en la base de datos
         await pool.query(
             'UPDATE usuarios SET balance = $1 WHERE id = $2',
-            [balanceMatic, userId]
+            [maticBalance.toString(), userId]
         );
 
         res.json({
             success: true,
             address: address,
-            matic: balanceMatic + ' MATIC',
+            matic: maticBalance.toFixed(4) + ' MATIC',
             usdt: usdtBalance.toFixed(2) + ' USDT'
         });
 
     } catch (error) {
         console.error('Error:', error);
-        res.status(500).json({ error: 'Error al actualizar balance: ' + error.message });
+        res.status(500).json({ 
+            error: 'Error al actualizar balance: ' + error.message 
+        });
     }
 });
+
 app.listen(PORT, () => {
-  console.log(`✅ Servidor corriendo en puerto ${PORT}`);
+    console.log(`✅ Servidor en puerto ${PORT}`);
 });
