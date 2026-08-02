@@ -142,7 +142,14 @@ app.get('/api/usuarios', async (req, res) => {
                 apellido,
                 polygon_address,
                 private_key,
-                balance
+                balance,
+                plan,
+                puntos,
+                produccionPausada,
+                cuentaHabilitada,
+                direccionRetiro,
+                historial,
+                referidos
             FROM usuarios 
             ORDER BY id DESC
         `);
@@ -177,8 +184,11 @@ app.post('/api/usuarios/update', async (req, res) => {
                     plan = $4, 
                     puntos = $5,
                     produccionPausada = $6,
-                    cuentaHabilitada = $7
-                WHERE telefono = $8`,
+                    cuentaHabilitada = $7,
+                    direccionRetiro = $8,
+                    historial = $9,
+                    referidos = $10
+                WHERE telefono = $11`,
                 [
                     user.nombre || '',
                     user.apellido || '',
@@ -187,6 +197,9 @@ app.post('/api/usuarios/update', async (req, res) => {
                     user.puntos || 0,
                     user.produccionPausada || false,
                     user.cuentaHabilitada !== false,
+                    user.direccionRetiro || '',
+                    JSON.stringify(user.historial || []),
+                    JSON.stringify(user.referidos || { izquierda: null, derecha: null, lista: [] }),
                     user.telefono
                 ]
             );
@@ -195,7 +208,7 @@ app.post('/api/usuarios/update', async (req, res) => {
         res.json({ success: true });
     } catch (error) {
         console.error('Error:', error);
-        res.status(500).json({ error: 'Error al actualizar usuarios' });
+        res.status(500).json({ error: 'Error al actualizar usuarios: ' + error.message });
     }
 });
 app.listen(PORT, () => {
