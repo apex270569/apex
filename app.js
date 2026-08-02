@@ -156,6 +156,48 @@ app.get('/api/usuarios', async (req, res) => {
         res.status(500).json({ error: 'Error al obtener usuarios' });
     }
 });
+// ===== ACTUALIZAR USUARIOS =====
+app.post('/api/usuarios/update', async (req, res) => {
+    try {
+        const { usuarios } = req.body;
+        
+        const { Pool } = require('pg');
+        const pool = new Pool({
+            connectionString: process.env.DATABASE_URL,
+            ssl: { rejectUnauthorized: false }
+        });
+
+        // Actualizar cada usuario en la base de datos
+        for (const user of usuarios) {
+            await pool.query(
+                `UPDATE usuarios SET 
+                    nombre = $1, 
+                    apellido = $2, 
+                    balance = $3, 
+                    plan = $4, 
+                    puntos = $5,
+                    produccionPausada = $6,
+                    cuentaHabilitada = $7
+                WHERE telefono = $8`,
+                [
+                    user.nombre || '',
+                    user.apellido || '',
+                    user.balance || 0,
+                    user.plan || 'Sin plan',
+                    user.puntos || 0,
+                    user.produccionPausada || false,
+                    user.cuentaHabilitada !== false,
+                    user.telefono
+                ]
+            );
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al actualizar usuarios' });
+    }
+});
 app.listen(PORT, () => {
     console.log(`✅ Servidor en puerto ${PORT}`);
 });
