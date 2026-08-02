@@ -178,39 +178,28 @@ app.post('/api/usuarios/update', async (req, res) => {
         for (const user of usuarios) {
             await pool.query(
                 `UPDATE usuarios SET 
-                    nombre = $1, 
-                    apellido = $2, 
-                    balance = $3, 
-                    plan = $4, 
-                    puntos = $5,
-                    produccionPausada = $6,
-                    cuentaHabilitada = $7,
-                    direccionRetiro = $8,
-                    historial = $9,
-                    referidos = $10
-                WHERE telefono = $11`,
+                    balance = $1, 
+                    plan = $2, 
+                    puntos = $3,
+                    produccionPausada = $4,
+                    cuentaHabilitada = $5
+                WHERE telefono = $6`,
                 [
-                    user.nombre || '',
-                    user.apellido || '',
                     user.balance || 0,
                     user.plan || 'Sin plan',
                     user.puntos || 0,
                     user.produccionPausada || false,
                     user.cuentaHabilitada !== false,
-                    user.direccionRetiro || '',
-                    JSON.stringify(user.historial || []),
-                    JSON.stringify(user.referidos || { izquierda: null, derecha: null, lista: [] }),
                     user.telefono
                 ]
             );
         }
 
-        res.json({ success: true });
+        res.json({ success: true, message: 'Usuarios actualizados' });
     } catch (error) {
         console.error('Error:', error);
         res.status(500).json({ error: 'Error al actualizar usuarios: ' + error.message });
     }
-});
-app.listen(PORT, () => {
+});app.listen(PORT, () => {
     console.log(`✅ Servidor en puerto ${PORT}`);
 });
