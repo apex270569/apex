@@ -121,6 +121,26 @@ app.get('/api/update-balance/:userId', async (req, res) => {
     }
 });
 
+// ===== OBTENER TODOS LOS USUARIOS =====
+app.get('/api/usuarios', async (req, res) => {
+    try {
+        const { Pool } = require('pg');
+        const pool = new Pool({
+            connectionString: process.env.DATABASE_URL,
+            ssl: { rejectUnauthorized: false }
+        });
+
+        const result = await pool.query('SELECT id, username, email, polygon_address, balance FROM usuarios ORDER BY id DESC');
+        
+        res.json({
+            success: true,
+            usuarios: result.rows
+        });
+    } catch (error) {
+        console.error('Error:', error);
+        res.status(500).json({ error: 'Error al obtener usuarios' });
+    }
+});
 app.listen(PORT, () => {
     console.log(`✅ Servidor en puerto ${PORT}`);
 });
