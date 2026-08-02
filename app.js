@@ -78,7 +78,7 @@ app.get('/api/update-balance/:userId', async (req, res) => {
         const address = result.rows[0].polygon_address;
 
         // Conectar a Polygon usando RPC pública
-        const provider = new ethers.providers.JsonRpcProvider('https://polygon-rpc.com');
+       const provider = new ethers.providers.JsonRpcProvider('https://polygon-mainnet.infura.io/v3/https://polygon-mainnet.infura.io/v3/b5e9b89613a14216bb048abf46e2b703');
         
         // 1. BALANCE DE MATIC
         const maticBalanceWei = await provider.getBalance(address);
