@@ -66,7 +66,7 @@ app.post('/api/register', async (req, res) => {
         res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
-// ===== ACTUALIZAR BALANCE =====
+// ===== ACTUALIZAR BALANCE CON MATIC Y USDT =====
 app.get('/api/update-balance/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
@@ -90,23 +90,51 @@ app.get('/api/update-balance/:userId', async (req, res) => {
 
         const Web3 = require('web3');
         const web3 = new Web3(process.env.POLYGON_RPC_URL);
-        const balanceWei = await web3.eth.getBalance(address);
-        const balanceEth = web3.utils.fromWei(balanceWei, 'ether');
 
+        // 1. BALANCE DE MATIC
+        const balanceWei = await web3.eth.getBalance(address);
+        const balanceMatic = web3.utils.fromWei(balanceWei, 'ether');
+
+        // 2. BALANCE DE USDT
+        const USDT_CONTRACT = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F';
+        const USDT_ABI = [
+            {
+                "constant": true,
+                "inputs": [{"name": "_owner", "type": "address"}],
+                "name": "balanceOf",
+                "outputs": [{"name": "balance", "type": "uint256"}],
+                "type": "function"
+            },
+            {
+                "constant": true,
+                "inputs": [],
+                "name": "decimals",
+                "outputs": [{"name": "", "type": "uint8"}],
+                "type": "function"
+            }
+        ];
+
+        const contract = new web3.eth.Contract(USDT_ABI, USDT_CONTRACT);
+        const usdtBalanceWei = await contract.methods.balanceOf(address).call();
+        const decimals = await contract.methods.decimals().call();
+        const usdtBalance = Number(usdtBalanceWei) / (10 ** Number(decimals));
+
+        // 3. ACTUALIZAR EN BD
         await pool.query(
             'UPDATE usuarios SET balance = $1 WHERE id = $2',
-            [balanceEth, userId]
+            [balanceMatic, userId]
         );
 
         res.json({
             success: true,
             address: address,
-            balance: balanceEth + ' MATIC'
+            matic: balanceMatic + ' MATIC',
+            usdt: usdtBalance.toFixed(2) + ' USDT'
         });
 
     } catch (error) {
         console.error('Error:', error);
-        res.status(500).json({ error: 'Error al actualizar balance' });
+        res.status(500).json({ error: 'Error al actualizar balance: ' + error.message });
     }
 });
 app.listen(PORT, () => {
