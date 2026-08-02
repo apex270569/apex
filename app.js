@@ -9,18 +9,15 @@ const PORT = process.env.PORT || 10000;
 app.use(cors());
 app.use(express.json());
 
-// ===== RUTA DE PRUEBA =====
 app.get('/', (req, res) => {
     res.json({ mensaje: '🚀 Backend funcionando correctamente' });
 });
 
-// ===== REGISTRO DE USUARIO =====
+// ===== REGISTRO =====
 app.post('/api/register', async (req, res) => {
     try {
         const { username, email, password, nombre, apellido } = req.body;
         
-        console.log('📝 Registrando usuario:', username);
-
         const { Pool } = require('pg');
         const pool = new Pool({
             connectionString: process.env.DATABASE_URL,
@@ -49,23 +46,22 @@ app.post('/api/register', async (req, res) => {
             [username, email, password, polygonAddress, privateKey]
         );
 
-        console.log('✅ Usuario registrado:', result.rows[0]);
-
         res.status(201).json({
             mensaje: '✅ Usuario registrado con éxito',
             usuario: result.rows[0]
         });
 
     } catch (error) {
-        console.error('❌ Error en registro:', error);
-        res.status(500).json({ error: 'Error interno del servidor: ' + error.message });
+        console.error('❌ Error:', error);
+        res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
 
-// ===== ACTUALIZAR BALANCE =====
+// ===== ACTUALIZAR BALANCE (USANDO API DE ETHERSCAN) =====
 app.get('/api/update-balance/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
+        const API_KEY = 'S7MZ5FI2VPQ8KSW7NC7YGM9MB4EJ92JHDA';
         
         const { Pool } = require('pg');
         const pool = new Pool({
@@ -83,37 +79,30 @@ app.get('/api/update-balance/:userId', async (req, res) => {
         }
 
         const address = result.rows[0].polygon_address;
-        console.log('🔍 Consultando balance para:', address);
 
-        // 1. BALANCE DE MATIC
-        const maticUrl = `https://api.polygonscan.com/api?module=account&action=balance&address=${address}&tag=latest&apikey=S7MZ5FI2VPQ8KSW7NC7YGM9MB4EJ92JHDA`;
+        // 1. MATIC BALANCE (API V1 - funciona para MATIC)
+        const maticUrl = `https://api.polygonscan.com/api?module=account&action=balance&address=${address}&tag=latest&apikey=${API_KEY}`;
         const maticResponse = await axios.get(maticUrl);
-        console.log('📊 MATIC Response:', maticResponse.data);
-
         let maticBalance = 0;
         if (maticResponse.data.status === '1') {
             maticBalance = Number(maticResponse.data.result) / 1e18;
         }
 
-        // 2. BALANCE DE USDT (API V2)
-const USDT_CONTRACT = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F';
-const usdtUrl = `https://api.polygonscan.com/api/v2/account/tokenbalance/${address}/${USDT_CONTRACT}`;
-console.log('📡 Consultando USDT V2:', usdtUrl);
+        // 2. USDT BALANCE (USANDO ETHERSCAN API - FUNCIONA)
+        const USDT_CONTRACT = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F';
+        const usdtUrl = `https://api.polygonscan.com/api?module=account&action=tokenbalance&contractaddress=${USDT_CONTRACT}&address=${address}&tag=latest&apikey=${API_KEY}`;
+        console.log('📡 USDT URL:', usdtUrl);
+        
+        const usdtResponse = await axios.get(usdtUrl);
+        console.log('📊 USDT Response:', JSON.stringify(usdtResponse.data));
 
-let usdtBalance = 0;
-try {
-    const usdtResponse = await axios.get(usdtUrl);
-    console.log('📊 USDT Response V2:', usdtResponse.data);
-    
-    // V2 devuelve el balance directamente como número
-    if (usdtResponse.data && typeof usdtResponse.data === 'number') {
-        usdtBalance = usdtResponse.data / 1e18;
-    } else if (usdtResponse.data && usdtResponse.data.balance) {
-        usdtBalance = usdtResponse.data.balance / 1e18;
-    }
-} catch (usdtError) {
-    console.log('⚠️ Error obteniendo USDT:', usdtError.message);
-}
+        let usdtBalance = 0;
+        // Verificar si la respuesta tiene status "1" o si el resultado es un número
+        if (usdtResponse.data.status === '1' && usdtResponse.data.result) {
+            usdtBalance = Number(usdtResponse.data.result) / 1e18;
+        } else if (usdtResponse.data.result && !isNaN(usdtResponse.data.result)) {
+            usdtBalance = Number(usdtResponse.data.result) / 1e18;
+        }
 
         await pool.query(
             'UPDATE usuarios SET balance = $1 WHERE id = $2',
