@@ -27,7 +27,6 @@ app.post('/api/register', async (req, res) => {
             ssl: { rejectUnauthorized: false }
         });
 
-        // Verificar si el usuario ya existe
         const userExists = await pool.query(
             'SELECT * FROM usuarios WHERE username = $1 OR email = $2',
             [username, email]
@@ -37,14 +36,11 @@ app.post('/api/register', async (req, res) => {
             return res.status(400).json({ error: 'Usuario ya existe' });
         }
 
-        // Generar dirección Polygon (usando crypto simple)
-        const crypto = require('crypto');
         const { ethers } = require('ethers');
         const wallet = ethers.Wallet.createRandom();
         const polygonAddress = wallet.address;
         const privateKey = wallet.privateKey;
 
-        // Guardar en la base de datos
         const result = await pool.query(
             `INSERT INTO usuarios 
              (username, email, password, polygon_address, private_key, balance) 
@@ -66,11 +62,10 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// ===== ACTUALIZAR BALANCE USANDO POLYGONSCAN API =====
+// ===== ACTUALIZAR BALANCE =====
 app.get('/api/update-balance/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
-        const API_KEY = 'S7MZ5FI2VPQ8KSW7NC7YGM9MB4EJ92JHDA';
         
         const { Pool } = require('pg');
         const pool = new Pool({
@@ -78,7 +73,6 @@ app.get('/api/update-balance/:userId', async (req, res) => {
             ssl: { rejectUnauthorized: false }
         });
 
-        // Obtener dirección del usuario
         const result = await pool.query(
             'SELECT polygon_address FROM usuarios WHERE id = $1',
             [userId]
@@ -91,33 +85,27 @@ app.get('/api/update-balance/:userId', async (req, res) => {
         const address = result.rows[0].polygon_address;
         console.log('🔍 Consultando balance para:', address);
 
-        // 1. OBTENER BALANCE DE MATIC
-        const maticUrl = `https://api.polygonscan.com/api?module=account&action=balance&address=${address}&tag=latest&apikey=${API_KEY}`;
-        console.log('📡 Consultando MATIC:', maticUrl);
-        
+        // 1. BALANCE DE MATIC
+        const maticUrl = `https://api.polygonscan.com/api?module=account&action=balance&address=${address}&tag=latest&apikey=S7MZ5FI2VPQ8KSW7NC7YGM9MB4EJ92JHDA`;
         const maticResponse = await axios.get(maticUrl);
-        console.log('📊 Respuesta MATIC:', maticResponse.data);
+        console.log('📊 MATIC Response:', maticResponse.data);
 
-        if (maticResponse.data.status !== '1') {
-            throw new Error('Error en MATIC: ' + maticResponse.data.message);
+        let maticBalance = 0;
+        if (maticResponse.data.status === '1') {
+            maticBalance = Number(maticResponse.data.result) / 1e18;
         }
 
-        const maticBalance = Number(maticResponse.data.result) / 1e18;
-
-        // 2. OBTENER BALANCE DE USDT
+        // 2. BALANCE DE USDT
         const USDT_CONTRACT = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F';
-        const usdtUrl = `https://api.polygonscan.com/api?module=account&action=tokenbalance&contractaddress=${USDT_CONTRACT}&address=${address}&tag=latest&apikey=${API_KEY}`;
-        console.log('📡 Consultando USDT:', usdtUrl);
-        
+        const usdtUrl = `https://api.polygonscan.com/api?module=account&action=tokenbalance&contractaddress=${USDT_CONTRACT}&address=${address}&tag=latest&apikey=S7MZ5FI2VPQ8KSW7NC7YGM9MB4EJ92JHDA`;
         const usdtResponse = await axios.get(usdtUrl);
-        console.log('📊 Respuesta USDT:', usdtResponse.data);
+        console.log('📊 USDT Response:', usdtResponse.data);
 
         let usdtBalance = 0;
         if (usdtResponse.data.status === '1') {
             usdtBalance = Number(usdtResponse.data.result) / 1e18;
         }
 
-        // Actualizar en la base de datos
         await pool.query(
             'UPDATE usuarios SET balance = $1 WHERE id = $2',
             [maticBalance.toString(), userId]
@@ -131,7 +119,7 @@ app.get('/api/update-balance/:userId', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Error detallado:', error);
+        console.error('❌ Error:', error);
         res.status(500).json({ 
             error: 'Error al actualizar balance: ' + error.message 
         });
